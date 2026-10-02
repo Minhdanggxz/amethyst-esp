@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "amethystesp",
+  "version": "${version}",
+  "name": "AmethystESP",
+  "description": "Draws a purple beam over chunks that hold lots of fully grown amethyst.",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.example.amethystesp.AmethystEspClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
