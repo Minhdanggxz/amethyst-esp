@@ -24,6 +24,7 @@ import net.minecraft.world.chunk.ChunkSection;
 import net.minecraft.world.chunk.WorldChunk;
 import org.joml.Matrix4f;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,7 +35,7 @@ import java.util.function.Predicate;
 
 public class AmethystEspClient implements ClientModInitializer {
     // ---- Settings (edit these) ----
-    private static final int THRESHOLD = 13;               // a chunk is marked when it has MORE than this many grown amethyst
+    private static final int THRESHOLD = 13;               // an area (group of touching chunks) is marked when it has MORE than this many grown amethyst
     private static final boolean COUNT_LARGE_BUDS = false; // also count large buds as "grown"
     private static final int SCAN_INTERVAL_TICKS = 40;     // rescan every 2 seconds
 
@@ -47,6 +48,14 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final class Hit {
         final int count, x, y, z;
         Hit(int count, int x, int y, int z) { this.count = count; this.x = x; this.y = y; this.z = z; }
+    }
+
+    private static final class ChunkData {
+        final int cx, cz, count, minY;
+        final long sumX, sumZ;
+        ChunkData(int cx, int cz, int count, long sumX, long sumZ, int minY) {
+            this.cx = cx; this.cz = cz; this.count = count; this.sumX = sumX; this.sumZ = sumZ; this.minY = minY;
+        }
     }
 
     private Map<Long, Hit> hits = new HashMap<>();
@@ -77,7 +86,8 @@ public class AmethystEspClient implements ClientModInitializer {
         ChunkPos center = mc.player.getChunkPos();
         int bottomY = world.getBottomY();
 
-        Map<Long, Hit> found = new HashMap<>();
+        // 1) count grown amethyst in every loaded chunk
+        Map<Long, ChunkData> data = new HashMap<>();
 
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
@@ -109,18 +119,57 @@ public class AmethystEspClient implements ClientModInitializer {
                     }
                 }
 
-                if (count > THRESHOLD) {
-                    found.put(ChunkPos.toLong(cx, cz),
-                        new Hit(count, (int) (sumX / count), minY, (int) (sumZ / count)));
+                if (count > 0) {
+                    data.put(ChunkPos.toLong(cx, cz), new ChunkData(cx, cz, count, sumX, sumZ, minY));
                 }
             }
         }
 
-        for (Map.Entry<Long, Hit> e : found.entrySet()) {
-            if (alerted.add(e.getKey())) {
-                Hit h = e.getValue();
-                mc.player.sendMessage(Text.literal("[AmethystESP] " + h.count + " amethyst lon tai X=" + h.x
-                    + " Y=" + h.y + " Z=" + h.z), false);
+        // 2) merge neighbouring chunks (including diagonals) into one group = one geode area
+        Map<Long, Hit> found = new HashMap<>();
+        Set<Long> visited = new HashSet<>();
+
+        for (Map.Entry<Long, ChunkData> entry : data.entrySet()) {
+            if (!visited.add(entry.getKey())) continue;
+
+            ArrayDeque<ChunkData> queue = new ArrayDeque<>();
+            List<Long> members = new ArrayList<>();
+            queue.add(entry.getValue());
+
+            int total = 0;
+            long sx = 0, sz = 0;
+            int minY = Integer.MAX_VALUE;
+
+            while (!queue.isEmpty()) {
+                ChunkData c = queue.poll();
+                members.add(ChunkPos.toLong(c.cx, c.cz));
+                total += c.count;
+                sx += c.sumX;
+                sz += c.sumZ;
+                if (c.minY < minY) minY = c.minY;
+
+                for (int ox = -1; ox <= 1; ox++) {
+                    for (int oz = -1; oz <= 1; oz++) {
+                        if (ox == 0 && oz == 0) continue;
+                        long k = ChunkPos.toLong(c.cx + ox, c.cz + oz);
+                        ChunkData n = data.get(k);
+                        if (n != null && visited.add(k)) queue.add(n);
+                    }
+                }
+            }
+
+            // 3) one beam per group, only if the whole group has more than THRESHOLD
+            if (total > THRESHOLD) {
+                Hit h = new Hit(total, (int) (sx / total), minY, (int) (sz / total));
+                found.put(entry.getKey(), h);
+
+                boolean isNew = true;
+                for (long k : members) if (alerted.contains(k)) { isNew = false; break; }
+                if (isNew) {
+                    alerted.addAll(members);
+                    mc.player.sendMessage(Text.literal("[AmethystESP] " + h.count + " amethyst lon tai X=" + h.x
+                        + " Y=" + h.y + " Z=" + h.z), false);
+                }
             }
         }
         hits = found;
@@ -177,4 +226,4 @@ public class AmethystEspClient implements ClientModInitializer {
         b.vertex(m, cx, cy, cz).color(RED, GREEN, BLUE, ALPHA);
         b.vertex(m, dx, dy, dz).color(RED, GREEN, BLUE, ALPHA);
     }
-  }
+}
