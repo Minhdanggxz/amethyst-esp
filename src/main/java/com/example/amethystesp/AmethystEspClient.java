@@ -42,7 +42,8 @@ import java.util.function.Predicate;
  * whose block light is exactly 5 (and not next to something brighter, like a torch). That is ~ the number of
  * grown clusters.
  *
- * Beam: PURPLE only, for geodes with MORE than THRESHOLD light-5 cells (or visible grown crystals).
+ * Beam: YELLOW (BLUE in code) = geode seen from far away, PURPLE = MORE than THRESHOLD light-5 cells (or visible grown crystals).
+ * Light data is only reliable when you are close, so a blue beam turns purple once you get near a rich geode.
  */
 public class AmethystEspClient implements ClientModInitializer {
     // ---- Settings (edit these) ----
@@ -57,11 +58,13 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final boolean COUNT_LARGE_BUDS = false;
 
     private static final int SCAN_INTERVAL_TICKS = 40;  // rescan every 2 seconds
+    private static final boolean SHOW_PLAIN_GEODES = true;  // blue beam for every geode seen from far away (light data is missing from far)
     private static final boolean DEBUG = true;          // print what the scan sees in chat every few seconds
     private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
 
     private static final int[] PURPLE = {200, 80, 255, 150};
+    private static final int[] BLUE = {255, 190, 0, 200};   // yellow-orange: easy to see against sky and stone
 
     private static final Predicate<BlockState> GROWN = s ->
         s.isOf(Blocks.AMETHYST_CLUSTER) || (COUNT_LARGE_BUDS && s.isOf(Blocks.LARGE_AMETHYST_BUD));
@@ -116,6 +119,7 @@ public class AmethystEspClient implements ClientModInitializer {
 
         // 1) per chunk: find the geode shell, then count amethyst-lit air cells around its centre
         Map<Long, ChunkData> data = new HashMap<>();
+        int[] hist = new int[16]; // debug: how many cells have each block-light level
 
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
@@ -156,7 +160,7 @@ public class AmethystEspClient implements ClientModInitializer {
                 if (shell < MIN_SHELL_PER_CHUNK) continue;
 
                 BlockPos centre = new BlockPos((int) (sumX / shell), (int) (sumY / shell), (int) (sumZ / shell));
-                int lit = litCells(world, centre);
+                int lit = litCells(world, centre, hist);
                 data.put(ChunkPos.toLong(cx, cz), new ChunkData(cx, cz, shell, grown, lit, centre));
             }
         }
@@ -203,9 +207,9 @@ public class AmethystEspClient implements ClientModInitializer {
             if (litMax > bestLit) bestLit = litMax;
 
             boolean strong = litMax > THRESHOLD || grown > THRESHOLD;
-            if (!strong) continue; // only keep geodes with lots of grown amethyst
+            if (!strong && !SHOW_PLAIN_GEODES) continue;
 
-            Hit h = new Hit(litMax, grown, (int) (sx / n), (int) (sy / n), (int) (sz / n), true);
+            Hit h = new Hit(litMax, grown, (int) (sx / n), (int) (sy / n), (int) (sz / n), strong);
             found.put(entry.getKey(), h);
 
             if (strong) {
@@ -226,8 +230,12 @@ public class AmethystEspClient implements ClientModInitializer {
             for (ChunkData c : data.values()) totalShell += c.shell;
             if (totalShell > 0 && now - lastDebug > DEBUG_INTERVAL_MS) {
                 lastDebug = now;
+                int high = 0;
+                for (int i = 6; i < 16; i++) high += hist[i];
                 mc.player.sendMessage(Text.literal("[AmethystESP] debug: vo=" + totalShell + " hang=" + geodeGroups
-                    + " light5 cao nhat=" + bestLit + " (nguong " + THRESHOLD + ")"), false);
+                    + " light5 cao nhat=" + bestLit + " (nguong " + THRESHOLD + ") | o theo muc sang: 0=" + hist[0]
+                    + " 1=" + hist[1] + " 2=" + hist[2] + " 3=" + hist[3] + " 4=" + hist[4] + " 5=" + hist[5]
+                    + " 6+=" + high), false);
             }
         }
     }
@@ -237,7 +245,7 @@ public class AmethystEspClient implements ClientModInitializer {
      * skipping cells next to anything brighter (torches, lamps). Block type does not matter,
      * so crystals hidden by the server are still counted through their light.
      */
-    private static int litCells(ClientWorld world, BlockPos centre) {
+    private static int litCells(ClientWorld world, BlockPos centre, int[] hist) {
         int count = 0;
         BlockPos.Mutable cursor = new BlockPos.Mutable();
         BlockPos.Mutable neighbour = new BlockPos.Mutable();
@@ -247,7 +255,9 @@ public class AmethystEspClient implements ClientModInitializer {
                 for (int dz = -SCAN_RADIUS; dz <= SCAN_RADIUS; dz++) {
                     cursor.set(centre.getX() + dx, centre.getY() + dy, centre.getZ() + dz);
 
-                    if (world.getLightLevel(LightType.BLOCK, cursor) != CLUSTER_LIGHT) continue;
+                    int light = world.getLightLevel(LightType.BLOCK, cursor);
+                    if (DEBUG) hist[Math.max(0, Math.min(light, 15))]++;
+                    if (light != CLUSTER_LIGHT) continue;
 
                     boolean artificial = false;
                     for (Direction d : Direction.values()) {
@@ -283,7 +293,7 @@ public class AmethystEspClient implements ClientModInitializer {
         BufferBuilder buf = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
 
         for (Hit h : new ArrayList<>(current.values())) {
-            int[] c = PURPLE;
+            int[] c = h.strong ? PURPLE : BLUE;
             float x0 = (float) (h.x + 0.5 - HALF_WIDTH - cam.x);
             float x1 = (float) (h.x + 0.5 + HALF_WIDTH - cam.x);
             float z0 = (float) (h.z + 0.5 - HALF_WIDTH - cam.z);
@@ -315,4 +325,4 @@ public class AmethystEspClient implements ClientModInitializer {
         b.vertex(m, cx, cy, cz).color(c[0], c[1], c[2], c[3]);
         b.vertex(m, dx, dy, dz).color(c[0], c[1], c[2], c[3]);
     }
-    }
+                    }
