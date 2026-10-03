@@ -50,13 +50,15 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final int SCAN_RADIUS = 8;           // how far around the geode centre to count light-5 cells
     private static final int CLUSTER_LIGHT = 5;         // block light of a fully grown amethyst cluster
     private static final int MIN_Y = -58;               // lowest Y to look for the geode shell
-    private static final int MAX_Y = 30;                // highest Y to look for the geode shell
+    private static final int MAX_Y = 50;                // highest Y to look for the geode shell (geodes can reach above Y=30)
     private static final int GEODE_MIN_BLOCKS = 30;     // amethyst/budding blocks needed to call an area a geode
     private static final int MIN_SHELL_PER_CHUNK = 3;   // chunk needs this many shell blocks before we measure light there
 
     private static final boolean COUNT_LARGE_BUDS = false;
 
     private static final int SCAN_INTERVAL_TICKS = 40;  // rescan every 2 seconds
+    private static final boolean DEBUG = true;          // print what the scan sees in chat every few seconds
+    private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
 
     private static final int[] PURPLE = {200, 80, 255, 150};
@@ -86,6 +88,7 @@ public class AmethystEspClient implements ClientModInitializer {
     private Map<Long, Hit> hits = new HashMap<>();
     private final Set<Long> alertedStrong = new HashSet<>();
     private int tickCounter = 0;
+    private long lastDebug = 0;
 
     @Override
     public void onInitializeClient() {
@@ -161,6 +164,7 @@ public class AmethystEspClient implements ClientModInitializer {
         // 2) merge touching chunks (including diagonals) into one group = one geode
         Map<Long, Hit> found = new HashMap<>();
         Set<Long> visited = new HashSet<>();
+        int geodeGroups = 0, bestLit = 0;
 
         for (Map.Entry<Long, ChunkData> entry : data.entrySet()) {
             if (!visited.add(entry.getKey())) continue;
@@ -195,6 +199,8 @@ public class AmethystEspClient implements ClientModInitializer {
 
             // 3) one beam per geode
             if (shell < GEODE_MIN_BLOCKS) continue;
+            geodeGroups++;
+            if (litMax > bestLit) bestLit = litMax;
 
             boolean strong = litMax > THRESHOLD || grown > THRESHOLD;
             if (!strong) continue; // only keep geodes with lots of grown amethyst
@@ -213,6 +219,17 @@ public class AmethystEspClient implements ClientModInitializer {
             }
         }
         hits = found;
+
+        if (DEBUG) {
+            long now = System.currentTimeMillis();
+            int totalShell = 0;
+            for (ChunkData c : data.values()) totalShell += c.shell;
+            if (totalShell > 0 && now - lastDebug > DEBUG_INTERVAL_MS) {
+                lastDebug = now;
+                mc.player.sendMessage(Text.literal("[AmethystESP] debug: vo=" + totalShell + " hang=" + geodeGroups
+                    + " light5 cao nhat=" + bestLit + " (nguong " + THRESHOLD + ")"), false);
+            }
+        }
     }
 
     /**
@@ -298,4 +315,4 @@ public class AmethystEspClient implements ClientModInitializer {
         b.vertex(m, cx, cy, cz).color(c[0], c[1], c[2], c[3]);
         b.vertex(m, dx, dy, dz).color(c[0], c[1], c[2], c[3]);
     }
-                                }
+    }
