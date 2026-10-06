@@ -48,7 +48,7 @@ import java.util.function.Predicate;
 public class AmethystEspClient implements ClientModInitializer {
     // ---- Settings (edit these) ----
     private static final int GLOW_CELL_THRESHOLD = 36;  // PURPLE beam when MORE than this many light-4 cells (tune with the numbers in the debug line)
-    private static final int SCAN_RADIUS = 8;           // how far around the geode centre to count light-4 cells
+    private static final int SCAN_RADIUS = 3;           // how far around the geode centre to count light-4 cells
     private static final int GLOW_LIGHT = 4;            // light of the air next to a fully grown cluster (the cluster itself is 5 but is hidden)
     private static final int NATURAL_MAX_LIGHT = 5;     // anything brighter next to a cell means a torch/lamp, so skip the cell
     private static final int MIN_Y = -58;               // lowest Y to look for the geode shell
@@ -66,8 +66,15 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
 
+    private static final boolean SHOW_BEAM = false;          // false = turn off the vertical beam
+    private static final boolean SHOW_STAR = true;          // star in the middle of the chunk plane
+    private static final float STAR_OUTER = 5.5f;           // star size (blocks)
+    private static final float STAR_INNER = 2.3f;
+    private static final boolean STAR_RGB = true;           // true = star cycles through rainbow colours
+    private static final long RGB_CYCLE_MS = 3000L;         // time for one full rainbow loop (smaller = faster)
+    private static final int[] STAR_COLOR = {255, 230, 0, 230};     // fixed colour used when STAR_RGB = false
     private static final boolean SHOW_CHUNK_PLANE = true;   // flat square over the geode's chunk, at ground/water level
-    private static final float PLANE_OFFSET = 8f;           // plane floats this many blocks above the highest ground/water point in the chunk
+    private static final float PLANE_OFFSET = 1f;           // plane floats this many blocks above the highest ground/water point in the chunk
     private static final int[] PLANE_FILL = {0, 255, 255, 70};      // cyan, translucent
     private static final int[] PLANE_EDGE = {0, 255, 255, 230};     // cyan border
 
@@ -330,11 +337,13 @@ public class AmethystEspClient implements ClientModInitializer {
             float y0 = (float) (h.y - cam.y);
             float y1 = (float) (top - cam.y);
 
-            quad(buf, m, c, x0, y0, z1, x0, y1, z1, x1, y1, z1, x1, y0, z1);
-            quad(buf, m, c, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0);
-            quad(buf, m, c, x0, y0, z0, x0, y1, z0, x0, y1, z1, x0, y0, z1);
-            quad(buf, m, c, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);
-            quad(buf, m, c, x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1);
+            if (SHOW_BEAM) {
+                quad(buf, m, c, x0, y0, z1, x0, y1, z1, x1, y1, z1, x1, y0, z1);
+                quad(buf, m, c, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0);
+                quad(buf, m, c, x0, y0, z0, x0, y1, z0, x0, y1, z1, x0, y0, z1);
+                quad(buf, m, c, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);
+                quad(buf, m, c, x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1);
+            }
 
             if (SHOW_CHUNK_PLANE) {
                 int chX = Math.floorDiv(h.x, 16) * 16;
@@ -353,6 +362,25 @@ public class AmethystEspClient implements ClientModInitializer {
                 quad(buf, m, PLANE_EDGE, px0, py, pz1 - t, px1, py, pz1 - t, px1, py, pz1, px0, py, pz1);
                 quad(buf, m, PLANE_EDGE, px0, py, pz0, px0 + t, py, pz0, px0 + t, py, pz1, px0, py, pz1);
                 quad(buf, m, PLANE_EDGE, px1 - t, py, pz0, px1, py, pz0, px1, py, pz1, px1 - t, py, pz1);
+
+                if (SHOW_STAR) {
+                    float cx = (px0 + px1) / 2f;
+                    float cz = (pz0 + pz1) / 2f;
+                    float sy = py + 0.05f; // just above the plane so it doesn't flicker
+                    float[] sxs = new float[10];
+                    float[] szs = new float[10];
+                    for (int i = 0; i < 10; i++) {
+                        double ang = -Math.PI / 2 + i * Math.PI / 5;
+                        float r = (i % 2 == 0) ? STAR_OUTER : STAR_INNER;
+                        sxs[i] = cx + (float) Math.cos(ang) * r;
+                        szs[i] = cz + (float) Math.sin(ang) * r;
+                    }
+                    int[] starCol = STAR_RGB ? rainbow() : STAR_COLOR;
+                    for (int i = 0; i < 10; i++) {
+                        int j = (i + 1) % 10;
+                        quad(buf, m, starCol, cx, sy, cz, sxs[i], sy, szs[i], sxs[j], sy, szs[j], sxs[j], sy, szs[j]);
+                    }
+                }
             }
         }
 
@@ -363,14 +391,18 @@ public class AmethystEspClient implements ClientModInitializer {
         RenderSystem.disableBlend();
     }
 
-    private static void quad(BufferBuilder b, Matrix4f m, int[] c,
-                             float ax, float ay, float az,
-                             float bx, float by, float bz,
-                             float cx, float cy, float cz,
-                             float dx, float dy, float dz) {
-        b.vertex(m, ax, ay, az).color(c[0], c[1], c[2], c[3]);
-        b.vertex(m, bx, by, bz).color(c[0], c[1], c[2], c[3]);
-        b.vertex(m, cx, cy, cz).color(c[0], c[1], c[2], c[3]);
-        b.vertex(m, dx, dy, dz).color(c[0], c[1], c[2], c[3]);
-    }
-}
+    /** Rainbow colour that changes over time (hue cycles through the full wheel). */
+    private static int[] rainbow() {
+        float hue = (System.currentTimeMillis() % RGB_CYCLE_MS) / (float) RGB_CYCLE_MS;
+        float h6 = hue * 6f;
+        int i = (int) h6;
+        float f = h6 - i;
+        int up = (int) (255 * f);
+        int down = (int) (255 * (1f - f));
+        switch (i % 6) {
+            case 0:  return new int[]{255, up, 0, 235};
+            case 1:  return new int[]{down, 255, 0, 235};
+            case 2:  return new int[]{0, 255, up, 235};
+            case 3:  return new int[]{0, down, 255, 235};
+            case 4:  return new int[]{up, 0, 255, 235};
+            default: return new int[]{255, 0, down, 2
