@@ -46,7 +46,7 @@ import java.util.function.Predicate;
  */
 public class AmethystEspClient implements ClientModInitializer {
     // ---- Settings (edit these) ----
-    private static final int GLOW_CELL_THRESHOLD = 60;  // PURPLE beam when MORE than this many light-4 cells (tune with the numbers in the debug line)
+    private static final int GLOW_CELL_THRESHOLD = 36;  // PURPLE beam when MORE than this many light-4 cells (tune with the numbers in the debug line)
     private static final int SCAN_RADIUS = 8;           // how far around the geode centre to count light-4 cells
     private static final int GLOW_LIGHT = 4;            // light of the air next to a fully grown cluster (the cluster itself is 5 but is hidden)
     private static final int NATURAL_MAX_LIGHT = 5;     // anything brighter next to a cell means a torch/lamp, so skip the cell
@@ -59,13 +59,13 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final boolean COUNT_LARGE_BUDS = false;
 
     private static final int SCAN_INTERVAL_TICKS = 40;  // rescan every 2 seconds
-    private static final boolean SHOW_PLAIN_GEODES = true;  // blue beam for every geode seen from far away (light data is missing from far)
-    private static final boolean DEBUG = true;          // print what the scan sees in chat every few seconds
+    private static final boolean SHOW_PLAIN_GEODES = false;  // blue beam for every geode seen from far away (light data is missing from far)
+    private static final boolean DEBUG = false;         // print what the scan sees in chat every few seconds
     private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
 
     private static final int[] PURPLE = {200, 80, 255, 150};
-    private static final int[] BLUE = {255, 255, 255, 255};   // white beam for plain geodes
+    private static final int[] BLUE = {255, 255, 255, 200};   // white beam for plain geodes
 
     private static final Predicate<BlockState> GROWN = s ->
         s.isOf(Blocks.AMETHYST_CLUSTER) || (COUNT_LARGE_BUDS && s.isOf(Blocks.LARGE_AMETHYST_BUD));
@@ -330,4 +330,4 @@ public class AmethystEspClient implements ClientModInitializer {
         b.vertex(m, cx, cy, cz).color(c[0], c[1], c[2], c[3]);
         b.vertex(m, dx, dy, dz).color(c[0], c[1], c[2], c[3]);
     }
-}
+                                                       }
