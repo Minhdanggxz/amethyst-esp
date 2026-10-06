@@ -17,7 +17,7 @@ public class AmethystEspScreen extends Screen {
     private final Screen parent;
 
     public AmethystEspScreen(Screen parent) {
-        super(Text.literal("AmethystESP"));
+        super(Text.literal("SUS CHUNK FINDER"));
         this.parent = parent;
     }
 
@@ -27,19 +27,19 @@ public class AmethystEspScreen extends Screen {
         int rightX = this.width / 2 + GAP / 2;
         int top = 30;
 
-        toggle(leftX, top, "Beam", () -> AmethystEspClient.SHOW_BEAM, v -> AmethystEspClient.SHOW_BEAM = v);
-        toggle(leftX, top + ROW, "Chunk plane", () -> AmethystEspClient.SHOW_CHUNK_PLANE, v -> AmethystEspClient.SHOW_CHUNK_PLANE = v);
+        toggle(leftX, top, "Tia", () -> AmethystEspClient.SHOW_BEAM, v -> AmethystEspClient.SHOW_BEAM = v);
+        toggle(leftX, top + ROW, "SUS CHUNK", () -> AmethystEspClient.SHOW_CHUNK_PLANE, v -> AmethystEspClient.SHOW_CHUNK_PLANE = v);
         toggle(leftX, top + ROW * 2, "Star", () -> AmethystEspClient.SHOW_STAR, v -> AmethystEspClient.SHOW_STAR = v);
         toggle(leftX, top + ROW * 3, "Star RGB", () -> AmethystEspClient.STAR_RGB, v -> AmethystEspClient.STAR_RGB = v);
-        toggle(leftX, top + ROW * 4, "Chat alert", () -> AmethystEspClient.ALERT_CHAT, v -> AmethystEspClient.ALERT_CHAT = v);
-        toggle(leftX, top + ROW * 5, "White beam (plain)", () -> AmethystEspClient.SHOW_PLAIN_GEODES, v -> AmethystEspClient.SHOW_PLAIN_GEODES = v);
+        toggle(leftX, top + ROW * 4, "Bao Toa Do", () -> AmethystEspClient.ALERT_CHAT, v -> AmethystEspClient.ALERT_CHAT = v);
+        toggle(leftX, top + ROW * 5, "SUS CHUNK V2 (beta)", () -> AmethystEspClient.SHOW_PLAIN_GEODES, v -> AmethystEspClient.SHOW_PLAIN_GEODES = v);
         toggle(leftX, top + ROW * 6, "Debug", () -> AmethystEspClient.DEBUG, v -> AmethystEspClient.DEBUG = v);
 
-        stepper(rightX, top, "Threshold", () -> String.valueOf(AmethystEspClient.GLOW_CELL_THRESHOLD),
+        stepper(rightX, top, "Light", () -> String.valueOf(AmethystEspClient.GLOW_CELL_THRESHOLD),
             -4, 4, d -> AmethystEspClient.GLOW_CELL_THRESHOLD = Math.max(1, AmethystEspClient.GLOW_CELL_THRESHOLD + d.intValue()));
         stepper(rightX, top + ROW, "Star size", () -> String.format("%.1f", AmethystEspClient.STAR_OUTER),
             -0.5, 0.5, d -> AmethystEspClient.STAR_OUTER = Math.max(1f, AmethystEspClient.STAR_OUTER + d.floatValue()));
-        stepper(rightX, top + ROW * 2, "Plane height", () -> String.format("%.1f", AmethystEspClient.PLANE_OFFSET),
+        stepper(rightX, top + ROW * 2, "Do Cao Chunk", () -> String.format("%.1f", AmethystEspClient.PLANE_OFFSET),
             -1, 1, d -> AmethystEspClient.PLANE_OFFSET = AmethystEspClient.PLANE_OFFSET + d.floatValue());
 
         ButtonWidget colour = ButtonWidget.builder(colourLabel(), btn -> {
@@ -56,7 +56,7 @@ public class AmethystEspScreen extends Screen {
 
     private static Text colourLabel() {
         int i = Math.floorMod(AmethystEspClient.planeColorIndex, AmethystEspClient.PLANE_COLOR_NAMES.length);
-        return Text.literal("Plane colour: " + AmethystEspClient.PLANE_COLOR_NAMES[i]);
+        return Text.literal("Mau Chunk: " + AmethystEspClient.PLANE_COLOR_NAMES[i]);
     }
 
     private void toggle(int x, int y, String name, BooleanSupplier get, Consumer<Boolean> set) {
