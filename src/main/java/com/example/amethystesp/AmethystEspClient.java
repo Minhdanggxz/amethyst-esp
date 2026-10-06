@@ -66,7 +66,7 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
 
-    private static final boolean SHOW_BEAM = true;          // false = turn off the vertical beam
+    private static final boolean SHOW_BEAM = false;          // false = turn off the vertical beam
     private static final boolean SHOW_STAR = true;          // star in the middle of the chunk plane
     private static final float STAR_OUTER = 5.5f;           // star size (blocks)
     private static final float STAR_INNER = 2.3f;
@@ -74,7 +74,7 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final long RGB_CYCLE_MS = 3000L;         // time for one full rainbow loop (smaller = faster)
     private static final int[] STAR_COLOR = {255, 230, 0, 230};     // fixed colour used when STAR_RGB = false
     private static final boolean SHOW_CHUNK_PLANE = true;   // flat square over the geode's chunk, at ground/water level
-    private static final float PLANE_OFFSET = 1f;           // plane floats this many blocks above the highest ground/water point in the chunk
+    private static final float PLANE_OFFSET = 2f;           // plane floats this many blocks above the highest ground/water point in the chunk
     private static final int[] PLANE_FILL = {0, 255, 255, 70};      // cyan, translucent
     private static final int[] PLANE_EDGE = {0, 255, 255, 230};     // cyan border
 
