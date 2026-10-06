@@ -48,7 +48,7 @@ import java.util.function.Predicate;
 public class AmethystEspClient implements ClientModInitializer {
     // ---- Settings (edit these) ----
     private static final int GLOW_CELL_THRESHOLD = 36;  // PURPLE beam when MORE than this many light-4 cells (tune with the numbers in the debug line)
-    private static final int SCAN_RADIUS = 3;           // how far around the geode centre to count light-4 cells
+    private static final int SCAN_RADIUS = 8;           // how far around the geode centre to count light-4 cells
     private static final int GLOW_LIGHT = 4;            // light of the air next to a fully grown cluster (the cluster itself is 5 but is hidden)
     private static final int NATURAL_MAX_LIGHT = 5;     // anything brighter next to a cell means a torch/lamp, so skip the cell
     private static final int MIN_Y = -58;               // lowest Y to look for the geode shell
@@ -66,7 +66,7 @@ public class AmethystEspClient implements ClientModInitializer {
     private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
 
-    private static final boolean SHOW_BEAM = false;          // false = turn off the vertical beam
+    private static final boolean SHOW_BEAM = true;          // false = turn off the vertical beam
     private static final boolean SHOW_STAR = true;          // star in the middle of the chunk plane
     private static final float STAR_OUTER = 5.5f;           // star size (blocks)
     private static final float STAR_INNER = 2.3f;
@@ -405,4 +405,18 @@ public class AmethystEspClient implements ClientModInitializer {
             case 2:  return new int[]{0, 255, up, 235};
             case 3:  return new int[]{0, down, 255, 235};
             case 4:  return new int[]{up, 0, 255, 235};
-            default: return new int[]{255, 0, down, 2
+            default: return new int[]{255, 0, down, 235};
+        }
+    }
+
+    private static void quad(BufferBuilder b, Matrix4f m, int[] c,
+                             float ax, float ay, float az,
+                             float bx, float by, float bz,
+                             float cx, float cy, float cz,
+                             float dx, float dy, float dz) {
+        b.vertex(m, ax, ay, az).color(c[0], c[1], c[2], c[3]);
+        b.vertex(m, bx, by, bz).color(c[0], c[1], c[2], c[3]);
+        b.vertex(m, cx, cy, cz).color(c[0], c[1], c[2], c[3]);
+        b.vertex(m, dx, dy, dz).color(c[0], c[1], c[2], c[3]);
+    }
+}
