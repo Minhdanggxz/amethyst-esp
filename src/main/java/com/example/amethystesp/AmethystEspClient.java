@@ -21,6 +21,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.Heightmap;
 import net.minecraft.world.LightType;
 import net.minecraft.world.chunk.ChunkSection;
 import net.minecraft.world.chunk.WorldChunk;
@@ -60,9 +61,15 @@ public class AmethystEspClient implements ClientModInitializer {
 
     private static final int SCAN_INTERVAL_TICKS = 40;  // rescan every 2 seconds
     private static final boolean SHOW_PLAIN_GEODES = false;  // blue beam for every geode seen from far away (light data is missing from far)
+    private static final boolean ALERT_CHAT = false;    // false = no chat message when a big geode is found (beam only)
     private static final boolean DEBUG = false;         // print what the scan sees in chat every few seconds
     private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
+
+    private static final boolean SHOW_CHUNK_PLANE = true;   // flat square over the geode's chunk, at ground/water level
+    private static final float PLANE_OFFSET = 8f;           // plane floats this many blocks above the highest ground/water point in the chunk
+    private static final int[] PLANE_FILL = {0, 255, 255, 70};      // cyan, translucent
+    private static final int[] PLANE_EDGE = {0, 255, 255, 230};     // cyan border
 
     private static final int[] PURPLE = {200, 80, 255, 150};
     private static final int[] BLUE = {255, 255, 255, 200};   // white beam for plain geodes
@@ -75,9 +82,11 @@ public class AmethystEspClient implements ClientModInitializer {
 
     private static final class Hit {
         final int lit, grown, x, y, z;
+        final float planeY;
         final boolean strong;
-        Hit(int lit, int grown, int x, int y, int z, boolean strong) {
+        Hit(int lit, int grown, int x, int y, int z, boolean strong, float planeY) {
             this.lit = lit; this.grown = grown; this.x = x; this.y = y; this.z = z; this.strong = strong;
+            this.planeY = planeY;
         }
     }
 
@@ -212,7 +221,8 @@ public class AmethystEspClient implements ClientModInitializer {
             boolean strong = litMax > GLOW_CELL_THRESHOLD || grown > THRESHOLD;
             if (!strong && !SHOW_PLAIN_GEODES) continue;
 
-            Hit h = new Hit(litMax, grown, (int) (sx / n), (int) (sy / n), (int) (sz / n), strong);
+            int hx = (int) (sx / n), hy = (int) (sy / n), hz = (int) (sz / n);
+            Hit h = new Hit(litMax, grown, hx, hy, hz, strong, surfaceY(world, hx, hz) + PLANE_OFFSET);
             found.put(entry.getKey(), h);
 
             if (strong) {
@@ -220,7 +230,7 @@ public class AmethystEspClient implements ClientModInitializer {
                 for (long k : members) if (alertedStrong.contains(k)) { newStrong = false; break; }
                 if (newStrong) {
                     alertedStrong.addAll(members);
-                    mc.player.sendMessage(Text.literal("[AmethystESP] Nhieu amethyst lon tai X=" + h.x + " Y=" + h.y
+                    if (ALERT_CHAT) mc.player.sendMessage(Text.literal("[AmethystESP] Nhieu amethyst lon tai X=" + h.x + " Y=" + h.y
                         + " Z=" + h.z + " (light 4: " + h.lit + ", thay " + h.grown + " cum)"), false);
                 }
             }
@@ -243,6 +253,20 @@ public class AmethystEspClient implements ClientModInitializer {
                     + " 4=" + hist[4] + " 5=" + hist[5]), false);
             }
         }
+    }
+
+    /** Highest ground/water surface (ignoring leaves) found in the chunk that contains (x, z). */
+    private static int surfaceY(ClientWorld world, int x, int z) {
+        int baseX = Math.floorDiv(x, 16) * 16;
+        int baseZ = Math.floorDiv(z, 16) * 16;
+        int best = world.getBottomY();
+        for (int ox = 0; ox < 16; ox += 3) {
+            for (int oz = 0; oz < 16; oz += 3) {
+                int y = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, baseX + ox, baseZ + oz);
+                if (y > best) best = y;
+            }
+        }
+        return best;
     }
 
     /**
@@ -311,6 +335,25 @@ public class AmethystEspClient implements ClientModInitializer {
             quad(buf, m, c, x0, y0, z0, x0, y1, z0, x0, y1, z1, x0, y0, z1);
             quad(buf, m, c, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);
             quad(buf, m, c, x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1);
+
+            if (SHOW_CHUNK_PLANE) {
+                int chX = Math.floorDiv(h.x, 16) * 16;
+                int chZ = Math.floorDiv(h.z, 16) * 16;
+                float px0 = (float) (chX - cam.x);
+                float px1 = (float) (chX + 16 - cam.x);
+                float pz0 = (float) (chZ - cam.z);
+                float pz1 = (float) (chZ + 16 - cam.z);
+                float py = (float) (h.planeY - cam.y);
+                float t = 0.25f; // border thickness
+
+                // filled square
+                quad(buf, m, PLANE_FILL, px0, py, pz0, px1, py, pz0, px1, py, pz1, px0, py, pz1);
+                // 4 border strips
+                quad(buf, m, PLANE_EDGE, px0, py, pz0, px1, py, pz0, px1, py, pz0 + t, px0, py, pz0 + t);
+                quad(buf, m, PLANE_EDGE, px0, py, pz1 - t, px1, py, pz1 - t, px1, py, pz1, px0, py, pz1);
+                quad(buf, m, PLANE_EDGE, px0, py, pz0, px0 + t, py, pz0, px0 + t, py, pz1, px0, py, pz1);
+                quad(buf, m, PLANE_EDGE, px1 - t, py, pz0, px1, py, pz0, px1, py, pz1, px1 - t, py, pz1);
+            }
         }
 
         BufferRenderer.drawWithGlobalProgram(buf.end());
@@ -330,4 +373,4 @@ public class AmethystEspClient implements ClientModInitializer {
         b.vertex(m, cx, cy, cz).color(c[0], c[1], c[2], c[3]);
         b.vertex(m, dx, dy, dz).color(c[0], c[1], c[2], c[3]);
     }
-                                                       }
+}
