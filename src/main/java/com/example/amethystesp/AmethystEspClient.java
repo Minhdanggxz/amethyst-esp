@@ -381,6 +381,7 @@ public class AmethystEspClient implements ClientModInitializer {
     private void onRender(WorldRenderContext ctx) {
         Map<Long, Hit> current = hits;
         if (current.isEmpty()) return;
+        if (!SHOW_BEAM && !SHOW_CHUNK_PLANE && !SHOW_STAR) return;
 
         MatrixStack matrices = ctx.matrixStack();
         if (matrices == null) return;
@@ -414,7 +415,7 @@ public class AmethystEspClient implements ClientModInitializer {
                 quad(buf, m, c, x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1);
             }
 
-            if (SHOW_CHUNK_PLANE) {
+            if (SHOW_CHUNK_PLANE || SHOW_STAR) {
                 int chX = Math.floorDiv(h.x, 16) * 16;
                 int chZ = Math.floorDiv(h.z, 16) * 16;
                 float px0 = (float) (chX - cam.x);
@@ -424,12 +425,13 @@ public class AmethystEspClient implements ClientModInitializer {
                 float py = (float) (h.planeY - cam.y);
                 float t = 0.25f;
 
-                quad(buf, m, PLANE_FILL, px0, py, pz0, px1, py, pz0, px1, py, pz1, px0, py, pz1);
-
-                quad(buf, m, PLANE_EDGE, px0, py, pz0, px1, py, pz0, px1, py, pz0 + t, px0, py, pz0 + t);
-                quad(buf, m, PLANE_EDGE, px0, py, pz1 - t, px1, py, pz1 - t, px1, py, pz1, px0, py, pz1);
-                quad(buf, m, PLANE_EDGE, px0, py, pz0, px0 + t, py, pz0, px0 + t, py, pz1, px0, py, pz1);
-                quad(buf, m, PLANE_EDGE, px1 - t, py, pz0, px1, py, pz0, px1, py, pz1, px1 - t, py, pz1);
+                if (SHOW_CHUNK_PLANE) {
+                    quad(buf, m, PLANE_FILL, px0, py, pz0, px1, py, pz0, px1, py, pz1, px0, py, pz1);
+                    quad(buf, m, PLANE_EDGE, px0, py, pz0, px1, py, pz0, px1, py, pz0 + t, px0, py, pz0 + t);
+                    quad(buf, m, PLANE_EDGE, px0, py, pz1 - t, px1, py, pz1 - t, px1, py, pz1, px0, py, pz1);
+                    quad(buf, m, PLANE_EDGE, px0, py, pz0, px0 + t, py, pz0, px0 + t, py, pz1, px0, py, pz1);
+                    quad(buf, m, PLANE_EDGE, px1 - t, py, pz0, px1, py, pz0, px1, py, pz1, px1 - t, py, pz1);
+                }
 
                 if (SHOW_STAR) {
                     float cx = (px0 + px1) / 2f;
