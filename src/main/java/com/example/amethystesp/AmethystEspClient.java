@@ -2,12 +2,17 @@ package com.example.amethystesp;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BufferRenderer;
@@ -15,6 +20,7 @@ import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
@@ -26,60 +32,120 @@ import net.minecraft.world.LightType;
 import net.minecraft.world.chunk.ChunkSection;
 import net.minecraft.world.chunk.WorldChunk;
 import org.joml.Matrix4f;
+import org.lwjgl.glfw.GLFW;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/**
- * Geode finder based on LIGHT.
- * Grown amethyst glows. From far away the server hides the crystal blocks themselves, so the cells that hold the
- * crystal (light 5) read 0, but the air cells next to them still read light 4. So we find geodes by their shell
- * blocks, then count cells around the geode whose block light is exactly 4 (and not next to anything brighter than 5,
- * like a torch). More such cells = more grown crystals.
- *
- * Beam: BLUE = geode seen from far away, PURPLE = MORE than GLOW_CELL_THRESHOLD light-4 cells (or visible grown crystals).
- */
 public class AmethystEspClient implements ClientModInitializer {
-    // ---- Settings (edit these) ----
-    private static final int GLOW_CELL_THRESHOLD = 36;  // PURPLE beam when MORE than this many light-4 cells (tune with the numbers in the debug line)
-    private static final int SCAN_RADIUS = 8;           // how far around the geode centre to count light-4 cells
-    private static final int GLOW_LIGHT = 4;            // light of the air next to a fully grown cluster (the cluster itself is 5 but is hidden)
-    private static final int NATURAL_MAX_LIGHT = 5;     // anything brighter next to a cell means a torch/lamp, so skip the cell
-    private static final int MIN_Y = -58;               // lowest Y to look for the geode shell
-    private static final int MAX_Y = 50;                // highest Y to look for the geode shell (geodes can reach above Y=30)
-    private static final int GEODE_MIN_BLOCKS = 30;     // amethyst/budding blocks needed to call an area a geode
-    private static final int MIN_SHELL_PER_CHUNK = 3;   // chunk needs this many shell blocks before we measure light there
 
-    private static final int THRESHOLD = 13;            // also PURPLE if more than this many grown crystals are visible
+    static int GLOW_CELL_THRESHOLD = 36;
+    private static final int SCAN_RADIUS = 8;
+    private static final int GLOW_LIGHT = 4;
+    private static final int NATURAL_MAX_LIGHT = 5;
+    private static final int MIN_Y = -58;
+    private static final int MAX_Y = 50;
+    private static final int GEODE_MIN_BLOCKS = 30;
+    private static final int MIN_SHELL_PER_CHUNK = 3;
+
+    private static final int THRESHOLD = 13;
     private static final boolean COUNT_LARGE_BUDS = false;
 
-    private static final int SCAN_INTERVAL_TICKS = 40;  // rescan every 2 seconds
-    private static final boolean SHOW_PLAIN_GEODES = false;  // blue beam for every geode seen from far away (light data is missing from far)
-    private static final boolean ALERT_CHAT = false;    // false = no chat message when a big geode is found (beam only)
-    private static final boolean DEBUG = false;         // print what the scan sees in chat every few seconds
+    private static final int SCAN_INTERVAL_TICKS = 40;
+    static boolean SHOW_PLAIN_GEODES = false;
+    static boolean ALERT_CHAT = false;
+    static boolean DEBUG = false;
     private static final long DEBUG_INTERVAL_MS = 5000;
     private static final float HALF_WIDTH = 0.2f;
 
-    private static final boolean SHOW_BEAM = false;          // false = turn off the vertical beam
-    private static final boolean SHOW_STAR = true;          // star in the middle of the chunk plane
-    private static final float STAR_OUTER = 5.5f;           // star size (blocks)
-    private static final float STAR_INNER = 2.3f;
-    private static final boolean STAR_RGB = true;           // true = star cycles through rainbow colours
-    private static final long RGB_CYCLE_MS = 3000L;         // time for one full rainbow loop (smaller = faster)
-    private static final int[] STAR_COLOR = {255, 230, 0, 230};     // fixed colour used when STAR_RGB = false
-    private static final boolean SHOW_CHUNK_PLANE = true;   // flat square over the geode's chunk, at ground/water level
-    private static final float PLANE_OFFSET = 2f;           // plane floats this many blocks above the highest ground/water point in the chunk
-    private static final int[] PLANE_FILL = {0, 255, 255, 70};      // cyan, translucent
-    private static final int[] PLANE_EDGE = {0, 255, 255, 230};     // cyan border
+    static boolean SHOW_BEAM = true;
+    static boolean SHOW_STAR = true;
+    static float STAR_OUTER = 5.5f;
+    static boolean STAR_RGB = true;
+    private static final long RGB_CYCLE_MS = 3000L;
+    private static final int[] STAR_COLOR = {255, 230, 0, 230};
+    static boolean SHOW_CHUNK_PLANE = true;
+    static float PLANE_OFFSET = 1f;
+    static int[] PLANE_FILL = {0, 255, 255, 70};
+    static int[] PLANE_EDGE = {0, 255, 255, 230};
+
+    static int planeColorIndex = 0;
+    static final String[] PLANE_COLOR_NAMES = {"Cyan", "Red", "Green", "Purple", "White", "Orange"};
+    private static final int[][] PLANE_COLOR_RGB = {
+        {0, 255, 255}, {255, 60, 60}, {60, 255, 60}, {190, 80, 255}, {255, 255, 255}, {255, 150, 0}
+    };
+
+    static void applyPlaneColor() {
+        int[] c = PLANE_COLOR_RGB[Math.floorMod(planeColorIndex, PLANE_COLOR_RGB.length)];
+        PLANE_FILL = new int[]{c[0], c[1], c[2], 70};
+        PLANE_EDGE = new int[]{c[0], c[1], c[2], 230};
+    }
+
+    private static Path configPath() {
+        return FabricLoader.getInstance().getConfigDir().resolve("amethystesp.properties");
+    }
+
+    static void save() {
+        Properties p = new Properties();
+        p.setProperty("threshold", String.valueOf(GLOW_CELL_THRESHOLD));
+        p.setProperty("plainGeodes", String.valueOf(SHOW_PLAIN_GEODES));
+        p.setProperty("alertChat", String.valueOf(ALERT_CHAT));
+        p.setProperty("debug", String.valueOf(DEBUG));
+        p.setProperty("beam", String.valueOf(SHOW_BEAM));
+        p.setProperty("star", String.valueOf(SHOW_STAR));
+        p.setProperty("starSize", String.valueOf(STAR_OUTER));
+        p.setProperty("starRgb", String.valueOf(STAR_RGB));
+        p.setProperty("plane", String.valueOf(SHOW_CHUNK_PLANE));
+        p.setProperty("planeOffset", String.valueOf(PLANE_OFFSET));
+        p.setProperty("planeColor", String.valueOf(planeColorIndex));
+        try (OutputStream out = Files.newOutputStream(configPath())) {
+            p.store(out, "AmethystESP");
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void load() {
+        Path path = configPath();
+        if (!Files.exists(path)) return;
+        Properties p = new Properties();
+        try (InputStream in = Files.newInputStream(path)) {
+            p.load(in);
+        } catch (IOException e) {
+            return;
+        }
+        try {
+            GLOW_CELL_THRESHOLD = Integer.parseInt(p.getProperty("threshold", String.valueOf(GLOW_CELL_THRESHOLD)));
+            SHOW_PLAIN_GEODES = Boolean.parseBoolean(p.getProperty("plainGeodes", String.valueOf(SHOW_PLAIN_GEODES)));
+            ALERT_CHAT = Boolean.parseBoolean(p.getProperty("alertChat", String.valueOf(ALERT_CHAT)));
+            DEBUG = Boolean.parseBoolean(p.getProperty("debug", String.valueOf(DEBUG)));
+            SHOW_BEAM = Boolean.parseBoolean(p.getProperty("beam", String.valueOf(SHOW_BEAM)));
+            SHOW_STAR = Boolean.parseBoolean(p.getProperty("star", String.valueOf(SHOW_STAR)));
+            STAR_OUTER = Float.parseFloat(p.getProperty("starSize", String.valueOf(STAR_OUTER)));
+            STAR_RGB = Boolean.parseBoolean(p.getProperty("starRgb", String.valueOf(STAR_RGB)));
+            SHOW_CHUNK_PLANE = Boolean.parseBoolean(p.getProperty("plane", String.valueOf(SHOW_CHUNK_PLANE)));
+            PLANE_OFFSET = Float.parseFloat(p.getProperty("planeOffset", String.valueOf(PLANE_OFFSET)));
+            planeColorIndex = Integer.parseInt(p.getProperty("planeColor", String.valueOf(planeColorIndex)));
+        } catch (NumberFormatException ignored) {
+        }
+        applyPlaneColor();
+    }
+
+    private static KeyBinding menuKey;
 
     private static final int[] PURPLE = {200, 80, 255, 150};
-    private static final int[] BLUE = {255, 255, 255, 200};   // white beam for plain geodes
+    private static final int[] BLUE = {255, 255, 255, 200};
 
     private static final Predicate<BlockState> GROWN = s ->
         s.isOf(Blocks.AMETHYST_CLUSTER) || (COUNT_LARGE_BUDS && s.isOf(Blocks.LARGE_AMETHYST_BUD));
@@ -112,11 +178,23 @@ public class AmethystEspClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        load();
+        menuKey = KeyBindingHelper.registerKeyBinding(
+            new KeyBinding("key.amethystesp.menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category.amethystesp"));
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+            dispatcher.register(ClientCommandManager.literal("esp").executes(ctx -> {
+                MinecraftClient client = ctx.getSource().getClient();
+                client.send(() -> client.setScreen(new AmethystEspScreen(null)));
+                return 1;
+            })));
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
         WorldRenderEvents.LAST.register(this::onRender);
     }
 
     private void onTick(MinecraftClient mc) {
+        while (menuKey.wasPressed()) {
+            if (mc.currentScreen == null) mc.setScreen(new AmethystEspScreen(null));
+        }
         if (mc.world == null || mc.player == null) {
             hits = new HashMap<>();
             alertedStrong.clear();
@@ -134,9 +212,8 @@ public class AmethystEspClient implements ClientModInitializer {
         ChunkPos center = mc.player.getChunkPos();
         int bottomY = world.getBottomY();
 
-        // 1) per chunk: find the geode shell, then count amethyst-lit air cells around its centre
         Map<Long, ChunkData> data = new HashMap<>();
-        int[] hist = new int[16]; // debug: how many cells have each block-light level
+        int[] hist = new int[16];
 
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
@@ -182,7 +259,6 @@ public class AmethystEspClient implements ClientModInitializer {
             }
         }
 
-        // 2) merge touching chunks (including diagonals) into one group = one geode
         Map<Long, Hit> found = new HashMap<>();
         Set<Long> visited = new HashSet<>();
         int geodeGroups = 0, bestLit = 0;
@@ -203,7 +279,7 @@ public class AmethystEspClient implements ClientModInitializer {
                 members.add(ChunkPos.toLong(c.cx, c.cz));
                 shell += c.shell;
                 grown += c.grown;
-                if (c.lit > litMax) litMax = c.lit;   // max, not sum: neighbouring chunks measure the same geode
+                if (c.lit > litMax) litMax = c.lit;
                 sx += c.centreX;
                 sy += c.centreY;
                 sz += c.centreZ;
@@ -219,7 +295,6 @@ public class AmethystEspClient implements ClientModInitializer {
                 }
             }
 
-            // 3) one beam per geode
             if (shell < GEODE_MIN_BLOCKS) continue;
             geodeGroups++;
             if (litMax > bestLit) bestLit = litMax;
@@ -262,8 +337,7 @@ public class AmethystEspClient implements ClientModInitializer {
         }
     }
 
-    /** Highest ground/water surface (ignoring leaves) found in the chunk that contains (x, z). */
-    private static int surfaceY(ClientWorld world, int x, int z) {
+        private static int surfaceY(ClientWorld world, int x, int z) {
         int baseX = Math.floorDiv(x, 16) * 16;
         int baseZ = Math.floorDiv(z, 16) * 16;
         int best = world.getBottomY();
@@ -276,12 +350,7 @@ public class AmethystEspClient implements ClientModInitializer {
         return best;
     }
 
-    /**
-     * Counts cells around the geode centre whose block light is exactly GLOW_LIGHT (4),
-     * skipping cells next to anything brighter (torches, lamps). Block type does not matter,
-     * so crystals hidden by the server are still counted through the light around them.
-     */
-    private static int litCells(ClientWorld world, BlockPos centre, int[] hist) {
+        private static int litCells(ClientWorld world, BlockPos centre, int[] hist) {
         int count = 0;
         BlockPos.Mutable cursor = new BlockPos.Mutable();
         BlockPos.Mutable neighbour = new BlockPos.Mutable();
@@ -353,11 +422,10 @@ public class AmethystEspClient implements ClientModInitializer {
                 float pz0 = (float) (chZ - cam.z);
                 float pz1 = (float) (chZ + 16 - cam.z);
                 float py = (float) (h.planeY - cam.y);
-                float t = 0.25f; // border thickness
+                float t = 0.25f;
 
-                // filled square
                 quad(buf, m, PLANE_FILL, px0, py, pz0, px1, py, pz0, px1, py, pz1, px0, py, pz1);
-                // 4 border strips
+
                 quad(buf, m, PLANE_EDGE, px0, py, pz0, px1, py, pz0, px1, py, pz0 + t, px0, py, pz0 + t);
                 quad(buf, m, PLANE_EDGE, px0, py, pz1 - t, px1, py, pz1 - t, px1, py, pz1, px0, py, pz1);
                 quad(buf, m, PLANE_EDGE, px0, py, pz0, px0 + t, py, pz0, px0 + t, py, pz1, px0, py, pz1);
@@ -366,12 +434,12 @@ public class AmethystEspClient implements ClientModInitializer {
                 if (SHOW_STAR) {
                     float cx = (px0 + px1) / 2f;
                     float cz = (pz0 + pz1) / 2f;
-                    float sy = py + 0.05f; // just above the plane so it doesn't flicker
+                    float sy = py + 0.05f;
                     float[] sxs = new float[10];
                     float[] szs = new float[10];
                     for (int i = 0; i < 10; i++) {
                         double ang = -Math.PI / 2 + i * Math.PI / 5;
-                        float r = (i % 2 == 0) ? STAR_OUTER : STAR_INNER;
+                        float r = (i % 2 == 0) ? STAR_OUTER : STAR_OUTER * 0.42f;
                         sxs[i] = cx + (float) Math.cos(ang) * r;
                         szs[i] = cz + (float) Math.sin(ang) * r;
                     }
@@ -391,8 +459,7 @@ public class AmethystEspClient implements ClientModInitializer {
         RenderSystem.disableBlend();
     }
 
-    /** Rainbow colour that changes over time (hue cycles through the full wheel). */
-    private static int[] rainbow() {
+        private static int[] rainbow() {
         float hue = (System.currentTimeMillis() % RGB_CYCLE_MS) / (float) RGB_CYCLE_MS;
         float h6 = hue * 6f;
         int i = (int) h6;
